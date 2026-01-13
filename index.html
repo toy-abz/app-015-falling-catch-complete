@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Day15 — Falling Catch Game (Complete)</title>
+  <meta name="description" content="Day15 落ち物キャッチ完成版。タイトル/プレイ/リザルトの状態管理、ライフ制、爆弾、難易度スケーリング、LocalStorageベスト保存を学べるCanvasゲーム。" />
+  <style>
+    :root{
+      --bg:#050816;
+      --panel:#0b1020;
+      --card:#0f1631;
+      --text:#e8edf7;
+      --muted:#9aa3b8;
+      --accent:#7aa2ff;
+      --accent2:#6efacc;
+      --danger:#ff6b6b;
+      --warn:#ffd43b;
+      --edge:#242c4e;
+      --shadow:0 14px 32px rgba(0,0,0,.45);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans JP",sans-serif;
+      background:
+        radial-gradient(1200px 600px at 80% -10%,#172147,transparent),
+        var(--bg);
+      color:var(--text);
+      display:grid;
+      place-items:center;
+      padding:10px;
+    }
+    main{
+      width:min(96vw,920px);
+      background:linear-gradient(180deg,rgba(255,255,255,.03),transparent),var(--panel);
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.06);
+      box-shadow:var(--shadow);
+      padding:16px 16px 18px;
+    }
+    header{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+    h1{margin:0;font-size:18px;letter-spacing:.2px}
+    .muted{color:var(--muted);font-size:12px}
+    .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .chip{
+      display:inline-grid;place-items:center;
+      padding:4px 10px;border-radius:999px;
+      border:1px solid var(--edge);
+      background:#10152f;
+      font-size:12px;color:var(--muted);
+    }
+    .chip strong{color:var(--accent2)}
+    .chip.good{border-color:rgba(110,250,204,.45);color:#b8ffea}
+    .chip.bad{border-color:rgba(255,107,107,.55);color:#ffb3b3}
+    .chip.warn{border-color:rgba(255,212,59,.55);color:#fff1ad}
+
+    select,button{
+      appearance:none;
+      border-radius:12px;
+      border:1px solid var(--edge);
+      background:#10152f;
+      color:var(--text);
+      padding:8px 12px;
+      font-size:14px;
+      cursor:pointer;
+    }
+    button.primary{
+      border:0;
+      background:linear-gradient(180deg,var(--accent),#5878ff);
+      color:#050818;
+      font-weight:800;
+    }
+    button.ghost{
+      background:#0d1330;
+      border:1px solid #2a3566;
+    }
+    button:disabled{opacity:.55;cursor:not-allowed;}
+
+    .surface{
+      background:var(--card);
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.06);
+      margin-top:12px;
+      padding:10px 10px 12px;
+    }
+    canvas{
+      display:block;
+      width:100%;
+      max-width:880px;
+      height:auto;
+      border-radius:10px;
+      background:linear-gradient(180deg,#182444,#060b18);
+      border:1px solid #1f2743;
+      touch-action:manipulation;
+    }
+
+    footer{
+      margin-top:10px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .kbd{
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      background:#10152f;
+      border:1px solid #27315a;
+      border-radius:6px;
+      padding:2px 6px;
+    }
+
+    /* overlay（タイトル/リザルト画面） */
+    .overlay{
+      position:relative;
+      margin-top:10px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.06);
+      background:linear-gradient(180deg,rgba(255,255,255,.03),transparent), #0b1020;
+      padding:16px;
+    }
+    .grid2{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:12px;
+    }
+    @media (min-width: 820px){
+      .grid2{grid-template-columns:1.2fr .8fr;}
+    }
+    .panel{
+      background:#0f1430;
+      border:1px solid #222a52;
+      border-radius:14px;
+      padding:14px;
+    }
+    .panel h2{margin:0 0 6px;font-size:16px}
+    .panel p{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+    .big{
+      font-size:28px;font-weight:900;letter-spacing:.2px;
+      font-variant-numeric:tabular-nums;
+    }
+    .sr{position:absolute;left:-9999px}
+    .flash{
+      animation: flash .18s ease;
+    }
+    @keyframes flash{
+      from{filter:brightness(1.35)}
+      to{filter:brightness(1)}
+    }
+  </style>
+</head>
+<body>
+<main role="application" aria-labelledby="title">
+  <header>
+    <div>
+      <h1 id="title">Day15 — Falling Catch Game (Complete)</h1>
+      <div class="muted">タイトル/プレイ/リザルトの状態管理＋ライフ制＋爆弾＋ベスト保存（SpaceでStart/Retry）</div>
+      <div class="row" style="margin-top:6px" aria-label="ステータス">
+        <span class="chip">スコア：<strong id="score">0</strong></span>
+        <span class="chip">残り：<strong id="time">30.0</strong>s</span>
+        <span class="chip warn">ライフ：<strong id="life">3</strong></span>
+        <span class="chip good">ベスト：<strong id="best">0</strong></span>
+        <span id="feedback" class="chip" aria-live="polite"></span>
+      </div>
+    </div>
+
+    <div class="row" aria-label="設定">
+      <label class="muted">
+        難易度
+        <select id="mode">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+      </label>
+      <button id="startBtn" class="primary">Start</button>
+      <button id="retryBtn" class="ghost">Retry</button>
+    </div>
+  </header>
+
+  <section class="surface">
+    <canvas id="game" width="800" height="480" aria-label="ゲーム画面"></canvas>
+
+    <!-- タイトル/リザルト用のUI（Canvasの下に表示） -->
+    <div id="overlay" class="overlay" aria-live="polite"></div>
+  </section>
+
+  <footer>
+    <div>
+      操作：<span class="kbd">←</span><span class="kbd">→</span> / タップで移動｜
+      <span class="kbd">Space</span> Start/Retry｜
+      <span class="kbd">R</span> Retry
+    </div>
+    <div>© toy-abz — 100日チャレンジ Day15</div>
+  </footer>
+
+  <div id="live" class="sr" aria-live="assertive"></div>
+</main>
+
+<script>
+/* ============================================================================
+  Day15 — Falling Catch Game (Complete)
+  学習テーマ（Day14→Day15の発展）：
+    1) ゲーム状態管理（title / playing / result）
+    2) ライフ制（ミスで -1、0で終了）
+    3) アイテム種類（good / bomb）でルール分岐
+    4) 難易度スケーリング（時間経過で少しずつ難しく）
+    5) LocalStorage でベストスコア保存（モード別）
+
+  実装ポリシー：
+    - 外部ライブラリなし（Vanilla JS）
+    - 単一HTMLでGitHub Pagesにそのまま公開できる
+============================================================================ */
+
+/* ------------------------------
+   DOM取得
+-------------------------------- */
+const canvas   = document.getElementById('game');
+const ctx      = canvas.getContext('2d');
+
+const scoreEl  = document.getElementById('score');
+const timeEl   = document.getElementById('time');
+const lifeEl   = document.getElementById('life');
+const bestEl   = document.getElementById('best');
+const feedback = document.getElementById('feedback');
+const overlay  = document.getElementById('overlay');
+const live     = document.getElementById('live');
+
+const modeSel  = document.getElementById('mode');
+const startBtn = document.getElementById('startBtn');
+const retryBtn = document.getElementById('retryBtn');
+
+/* ------------------------------
+   定数・設定
+-------------------------------- */
+const GAME_MS = 30_000;          // 制限時間（30秒）
+const START_LIFE = 3;            // 初期ライフ
+const BEST_KEY = 'fallingcatch-best-v2'; // LocalStorageキー（バージョン管理）
+
+// 難易度ごとの基本パラメータ（Day14より少しゲームっぽく）
+const MODES = {
+  easy:   { spawnEvery: 780, speed: [120, 180], concurrent: 3 },
+  normal: { spawnEvery: 600, speed: [170, 240], concurrent: 4 },
+  hard:   { spawnEvery: 430, speed: [230, 320], concurrent: 5 },
+};
+
+// アイテムの出現比率（bombを少なめに）
+const BOMB_RATE = 0.15; // 15%
+
+/* ------------------------------
+   ユーティリティ
+-------------------------------- */
+const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+const rand  = (min, max) => min + Math.random() * (max - min);
+
+// 0..1を使って「だんだん難しくする」係数を作る（0=開始直後 / 1=終了直前）
+function progress01(){
+  return 1 - (state.timeLeftMs / GAME_MS); // 残り時間から逆算
+}
+
+// LocalStorage 読み込み
+function loadBest(){
+  try { return JSON.parse(localStorage.getItem(BEST_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+// LocalStorage 保存
+function saveBest(best){
+  try { localStorage.setItem(BEST_KEY, JSON.stringify(best)); }
+  catch { /* private mode等で失敗してもゲームは続ける */ }
+}
+
+/* ------------------------------
+   状態（State）
+-------------------------------- */
+const state = {
+  scene: 'title',     // 'title' | 'playing' | 'result'
+  mode: 'normal',
+  timeLeftMs: GAME_MS,
+  score: 0,
+  life: START_LIFE,
+  best: loadBest(),   // { easy: number, normal: number, hard: number }
+  lastT: 0,           // 直前フレーム時刻
+  spawnAcc: 0,        // 生成間隔計測用の蓄積時間
+  items: [],          // 落下物配列
+  player: null,       // プレイヤー
+  msgTtlMs: 0,        // HUDメッセージ表示時間
+};
+
+/* ------------------------------
+   プレイヤー
+-------------------------------- */
+function initPlayer(){
+  const w = 90;
+  const h = 16;
+  state.player = {
+    w, h,
+    x: (canvas.width - w) / 2,
+    y: canvas.height - h - 12,
+    speed: 460,   // px/s
+    dir: 0        // -1 left / 0 stop / 1 right
+  };
+}
+
+/* ------------------------------
+   アイテム（落下物）
+--------------------------------
+  type:
+    - 'good' : キャッチ +1
+    - 'bomb' : キャッチでライフ -1（避けるべき）
+-------------------------------- */
+function spawnItem(){
+  const conf = MODES[state.mode];
+
+  // 進行度に応じて難化（スケーリング）
+  const p = progress01(); // 0..1
+  const spawnScale = 1 - 0.12 * p; // 最大12%だけ間隔短縮
+  const speedScale = 1 + 0.28 * p; // 最大28%だけ速度増加
+
+  const w = rand(30, 54);
+  const h = rand(18, 30);
+  const x = rand(0, canvas.width - w);
+  const y = -h - 12;
+
+  const baseVy = rand(conf.speed[0], conf.speed[1]);
+  const vy = baseVy * speedScale;
+
+  const isBomb = Math.random() < BOMB_RATE;
+  const type = isBomb ? 'bomb' : 'good';
+
+  // 色（見た目で区別できるように）
+  const color = (type === 'bomb') ? '#ff6b6b' : '#6efacc';
+
+  state.items.push({
+    x, y, w, h, vy, type, color,
+    caught:false,
+    dead:false,
+  });
+}
+
+/* ------------------------------
+   衝突判定（AABB: 矩形同士）
+-------------------------------- */
+function hitRect(a, b){
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
+  );
+}
+
+/* ------------------------------
+   描画（Canvas）
+-------------------------------- */
+function drawBackground(){
+  const grd = ctx.createLinearGradient(0,0,0,canvas.height);
+  grd.addColorStop(0,'#182746');
+  grd.addColorStop(1,'#050815');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // うっすら縦線（スピード感）
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = '#cfe0ff';
+  for(let x=0; x<=canvas.width; x+=50){
+    ctx.beginPath();
+    ctx.moveTo(x,0);
+    ctx.lineTo(x,canvas.height);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // 地面ライン
+  const p = state.player;
+  const groundY = p.y + p.h + 4;
+  ctx.strokeStyle = '#273253';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, groundY);
+  ctx.lineTo(canvas.width, groundY);
+  ctx.stroke();
+}
+
+function drawPlayer(){
+  const p = state.player;
+  // 本体
+  ctx.fillStyle = '#7aa2ff';
+  roundRect(p.x, p.y, p.w, p.h, 7, true);
+
+  // 目印
+  ctx.fillStyle = '#b7c8ff';
+  ctx.fillRect(p.x + p.w*0.3, p.y - 4, p.w*0.4, 4);
+}
+
+function drawItems(){
+  for(const it of state.items){
+    ctx.fillStyle = it.color;
+    roundRect(it.x, it.y, it.w, it.h, 7, true);
+
+    // bombはアイコン追加（視認性UP）
+    if(it.type === 'bomb'){
+      ctx.fillStyle = '#23050a';
+      ctx.font = 'bold 14px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('!', it.x + it.w/2, it.y + it.h/2 + 0.5);
+    }
+  }
+}
+
+function draw(){
+  drawBackground();
+  drawPlayer();
+  drawItems();
+}
+
+/* Canvas角丸矩形 */
+function roundRect(x,y,w,h,r,fill){
+  const rr = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+rr, y);
+  ctx.arcTo(x+w, y,   x+w, y+h, rr);
+  ctx.arcTo(x+w, y+h, x,   y+h, rr);
+  ctx.arcTo(x,   y+h, x,   y,   rr);
+  ctx.arcTo(x,   y,   x+w, y,   rr);
+  if(fill) ctx.fill();
+  else ctx.stroke();
+}
+
+/* ------------------------------
+   HUD更新
+-------------------------------- */
+function updateHud(){
+  scoreEl.textContent = String(state.score);
+  lifeEl.textContent  = String(state.life);
+  timeEl.textContent  = (state.timeLeftMs / 1000).toFixed(1);
+  bestEl.textContent  = String(state.best[state.mode] || 0);
+}
+
+/* HUDメッセージ（短時間表示） */
+function showMsg(text, kind=''){
+  feedback.textContent = text;
+  feedback.className = 'chip' + (kind ? ` ${kind}` : '');
+  state.msgTtlMs = 450; // 0.45秒表示
+}
+
+/* ------------------------------
+   Overlay（title/result UI）
+-------------------------------- */
+function renderOverlay(){
+  // シーンに応じてHTMLを差し替える（Canvasの外にあるUI）
+  if(state.scene === 'title'){
+    overlay.innerHTML = `
+      <div class="grid2">
+        <div class="panel">
+          <h2>🎯 ルール</h2>
+          <p>
+            落ちてくるブロックをキャッチしてスコアを稼ぎます。<br>
+            <span class="chip good" style="display:inline-block;margin-top:8px">GOOD：+1</span>
+            <span class="chip bad" style="display:inline-block;margin-top:8px">BOMB：キャッチでライフ -1（避けよう）</span><br><br>
+            制限時間は <b>30秒</b>。ライフが <b>0</b> になっても終了です。
+          </p>
+        </div>
+        <div class="panel">
+          <h2>🧠 学習ポイント</h2>
+          <p>
+            ・ゲーム状態管理（title / playing / result）<br>
+            ・衝突判定（AABB）と配列管理<br>
+            ・難易度スケーリング（時間で難化）<br>
+            ・LocalStorageでベスト保存（モード別）<br><br>
+            <span class="muted">操作：← → / タップ移動、SpaceでStart</span>
+          </p>
+        </div>
+      </div>
+    `;
+  } else if(state.scene === 'result'){
+    const best = state.best[state.mode] || 0;
+    const isNew = state.score >= best && state.score !== 0; // endGameで更新済み
+    overlay.innerHTML = `
+      <div class="grid2">
+        <div class="panel">
+          <h2>🏁 結果</h2>
+          <div class="big">${state.score} <span class="muted">pt</span></div>
+          <p style="margin-top:6px">
+            難易度：<b>${state.mode.toUpperCase()}</b><br>
+            ベスト：<b>${best}</b> ${isNew ? '<span class="chip good" style="margin-left:6px">NEW!</span>' : ''}
+          </p>
+          <p style="margin-top:10px" class="muted">
+            Space / R でリトライできます。
+          </p>
+        </div>
+        <div class="panel">
+          <h2>次の一手</h2>
+          <p>
+            ・爆弾の種類を増やす（-2点、スロー効果など）<br>
+            ・レベル制（一定スコアでスピードUP）<br>
+            ・スマホ操作をドラッグ追従に変更<br>
+            ・ランキング（複数記録）へ拡張
+          </p>
+        </div>
+      </div>
+    `;
+  } else {
+    // playing のときは overlay をコンパクトに（空でもOK）
+    overlay.innerHTML = `
+      <div class="muted">プレイ中：GOODは取る／BOMBは避ける。ベスト更新を狙おう！</div>
+    `;
+  }
+}
+
+/* ------------------------------
+   ゲーム開始 / 終了 / リセット
+-------------------------------- */
+function setScene(next){
+  state.scene = next;
+  renderOverlay();
+}
+
+function resetGame(){
+  state.timeLeftMs = GAME_MS;
+  state.score = 0;
+  state.life = START_LIFE;
+  state.spawnAcc = 0;
+  state.items = [];
+  state.msgTtlMs = 0;
+  initPlayer();
+  updateHud();
+  draw();
+}
+
+function startGame(){
+  state.mode = modeSel.value;
+  updateHud();
+  resetGame();
+  setScene('playing');
+
+  showMsg('Start!', '');
+  state.lastT = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function endGame(){
+  // シーン遷移：result
+  setScene('result');
+
+  // ベスト更新（モード別）
+  const prev = state.best[state.mode] || 0;
+  if(state.score > prev){
+    state.best[state.mode] = state.score;
+    saveBest(state.best);
+    showMsg(`終了！ベスト更新：${state.score}pt`, 'good');
+  }else{
+    showMsg(`終了！スコア：${state.score}pt`, '');
+  }
+
+  updateHud();
+  live.textContent = `ゲーム終了。スコア ${state.score} 点`;
+}
+
+/* ------------------------------
+   メインループ（requestAnimationFrame）
+--------------------------------
+  ポイント：dt（前フレームとの差）を使うと
+  PC/スマホや処理負荷によってFPSが変わっても速度が安定する
+-------------------------------- */
+function loop(now){
+  if(state.scene !== 'playing') return;
+
+  const dt = now - state.lastT;
+  state.lastT = now;
+
+  // 1) プレイヤー移動
+  const p = state.player;
+  if(p.dir !== 0){
+    p.x += p.dir * p.speed * (dt/1000);
+    p.x = clamp(p.x, 0, canvas.width - p.w);
+  }
+
+  // 2) 落下物の生成
+  const conf = MODES[state.mode];
+
+  // スケーリングを考慮した生成間隔（spawnEveryを少し短縮）
+  const t = progress01();                 // 0..1
+  const spawnEvery = conf.spawnEvery * (1 - 0.12 * t);
+
+  state.spawnAcc += dt;
+  if(state.spawnAcc >= spawnEvery && state.items.length < conf.concurrent){
+    spawnItem();
+    state.spawnAcc = 0;
+  }
+
+  // 3) 落下物の更新（落ちる）＋衝突判定
+  const groundY = p.y + p.h + 4;
+  for(const it of state.items){
+    it.y += it.vy * (dt/1000);
+
+    // キャッチ判定（矩形同士）
+    if(!it.caught && hitRect(it, p)){
+      it.caught = true;
+
+      if(it.type === 'good'){
+        state.score += 1;
+        showMsg('+1', 'good');
+      }else{
+        // bombをキャッチしたらライフ-1（避けるべき）
+        state.life -= 1;
+        showMsg('BOMB! -1 LIFE', 'bad');
+
+        // 画面フラッシュ（演出）
+        canvas.classList.remove('flash'); // 再発火用
+        void canvas.offsetWidth;          // reflow
+        canvas.classList.add('flash');
+      }
+    }
+
+    // 地面に到達したら「ミス」
+    if(!it.dead && it.y + it.h >= groundY){
+      it.dead = true;
+
+      // good を落としたらライフ-1（緊張感）
+      // bomb を落とすのはペナルティなし（避けるゲーム性）
+      if(it.type === 'good' && !it.caught){
+        state.life -= 1;
+        showMsg('MISS -1 LIFE', 'warn');
+      }
+    }
+  }
+
+  // 4) 不要な落下物を除去（配列を軽く保つ）
+  state.items = state.items.filter(it => !it.caught && !it.dead);
+
+  // 5) タイマー更新
+  state.timeLeftMs = Math.max(0, state.timeLeftMs - dt);
+
+  // 6) 終了判定
+  if(state.life <= 0 || state.timeLeftMs <= 0){
+    endGame();
+    return;
+  }
+
+  // 7) HUD表示時間の減衰
+  if(state.msgTtlMs > 0){
+    state.msgTtlMs = Math.max(0, state.msgTtlMs - dt);
+    if(state.msgTtlMs === 0){
+      feedback.textContent = '';
+      feedback.className = 'chip';
+    }
+  }
+
+  // 8) 描画 & HUD更新
+  updateHud();
+  draw();
+
+  requestAnimationFrame(loop);
+}
+
+/* ------------------------------
+   入力（キーボード）
+-------------------------------- */
+window.addEventListener('keydown', (e)=>{
+  if(!state.player) return;
+
+  if(e.key === 'ArrowLeft')  state.player.dir = -1;
+  if(e.key === 'ArrowRight') state.player.dir = 1;
+
+  // Space：title/resultで Start/Retry
+  if(e.code === 'Space'){
+    e.preventDefault();
+    if(state.scene === 'title') startGame();
+    else if(state.scene === 'result') startGame();
+  }
+
+  // R：resultでRetry
+  if(e.key.toLowerCase() === 'r'){
+    if(state.scene === 'result') startGame();
+  }
+});
+
+window.addEventListener('keyup', (e)=>{
+  if(!state.player) return;
+
+  if(e.key === 'ArrowLeft' && state.player.dir === -1) state.player.dir = 0;
+  if(e.key === 'ArrowRight' && state.player.dir === 1) state.player.dir = 0;
+});
+
+/* ------------------------------
+   入力（ポインタ）※スマホ想定
+--------------------------------
+  タップ位置にプレイヤー中心を合わせる簡易操作
+-------------------------------- */
+canvas.addEventListener('pointerdown', (e)=>{
+  if(!state.player) return;
+  if(state.scene !== 'playing') return;
+
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const x = (e.clientX - rect.left) * scaleX;
+
+  state.player.x = clamp(x - state.player.w/2, 0, canvas.width - state.player.w);
+});
+
+/* ------------------------------
+   UIイベント
+-------------------------------- */
+startBtn.addEventListener('click', ()=>{
+  if(state.scene === 'playing') return;
+  startGame();
+});
+
+retryBtn.addEventListener('click', ()=>{
+  startGame();
+});
+
+modeSel.addEventListener('change', ()=>{
+  // モード変更時はベスト表示を更新（シーンに関係なく）
+  state.mode = modeSel.value;
+  updateHud();
+});
+
+/* ------------------------------
+   初期化
+-------------------------------- */
+(function init(){
+  initPlayer();
+  updateHud();
+  setScene('title');
+  draw();
+})();
+</script>
+</body>
+</html>
